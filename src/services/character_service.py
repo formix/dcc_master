@@ -2,13 +2,16 @@
 DCC Character Sheet — pure business logic.
 
 A minimal 0-level DCC character sheet. Ability score keys match DCC_ABILITIES
-from dice_service.py. Loads from / saves to a JSON file; no I/O framework
-dependency so it can be used by tests, CLIs, or any transport layer.
+from dice_service.py. Loads from / saves to a JSON file via marshmallow schemas;
+no I/O framework dependency so it can be used by tests, CLIs, or any transport layer.
 """
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
+
+from marshmallow import Schema, fields, post_load, pre_load, EXCLUDE
 
 from services.dice_service import DCC_ABILITIES
 
@@ -22,6 +25,10 @@ DCC_RACES: list[str] = ["Human", "Elf", "Halfling", "Dwarf"]
 # Non-human races (Elf, Halfling, Dwarf) use their race name as their class.
 DCC_CLASSES: list[str] = ["Warrior", "Wizard", "Cleric", "Thief", "Elf", "Halfling", "Dwarf"]
 
+
+# ---------------------------------------------------------------------------
+# Dataclasses
+# ---------------------------------------------------------------------------
 
 @dataclass
 class Condition:
@@ -70,7 +77,7 @@ class CharacterSheet:
     name: str = "Unknown Adventurer"
     occupation: str = "Peasant"
     race: str = "Human"           # must be in DCC_RACES
-    calling: str | None = None  # None = 0-level; non-humans use race as class
+    calling: str | None = None    # None = 0-level; non-humans use race as class
     level: int = 0
     abilities: dict[str, int] = field(
         default_factory=lambda: {a: 10 for a in DCC_ABILITIES}
@@ -81,13 +88,84 @@ class CharacterSheet:
     conditions: list[Condition] = field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# Marshmallow schemas
+# ---------------------------------------------------------------------------
+
+class ConditionSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    name     = fields.Str(load_default="unknown")
+    rounds   = fields.Int(load_default=-1)
+    source   = fields.Str(load_default="")
+    stat     = fields.Str(load_default="")
+    modifier = fields.Str(load_default="")
+
+    @post_load
+    def make(self, data, **kwargs) -> Condition:
+        return Condition(**data)
+
+
+class EquipmentSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    name     = fields.Str(load_default="unknown")
+    quantity = fields.Int(load_default=1)
+    weight   = fields.Float(load_default=0.0)
+    charges  = fields.Int(load_default=-1)
+    source   = fields.Str(load_default="starting equipment")
+
+    @post_load
+    def make(self, data, **kwargs) -> Equipment:
+        return Equipment(**data)
+
+
+class CharacterSheetSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id         = fields.Str(load_default="")
+    name       = fields.Str(load_default="Unknown Adventurer")
+    occupation = fields.Str(load_default="Peasant")
+    race       = fields.Str(load_default="Human")
+    calling    = fields.Str(load_default=None, allow_none=True)
+    level      = fields.Int(load_default=0)
+    abilities  = fields.Dict(keys=fields.Str(), values=fields.Int(), load_default=None)
+    hp         = fields.Int(load_default=4)
+    ac         = fields.Int(load_default=10)
+    equipment  = fields.List(fields.Nested(EquipmentSchema), load_default=list)
+    conditions = fields.List(fields.Nested(ConditionSchema), load_default=list)
+
+    @pre_load
+    def derive_calling(self, data, **kwargs) -> dict:
+        race = data.get("race", "Human")
+        if not data.get("calling"):
+            data["calling"] = race if race != "Human" else None
+        return data
+
+    @post_load
+    def make(self, data, **kwargs) -> CharacterSheet:
+        if data["abilities"] is None:
+            data["abilities"] = {a: 10 for a in DCC_ABILITIES}
+        return CharacterSheet(**data)
+
+
+_schema = CharacterSheetSchema()
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def load_sheet(path: Path = DEFAULT_SHEET_PATH) -> CharacterSheet:
     """
     Load a CharacterSheet from a JSON file.
 
     Raises:
         FileNotFoundError: If the file does not exist.
-        ValueError: If required fields are missing or malformed.
+        ValueError: If the file contains invalid JSON or schema errors.
     """
     if not path.exists():
         raise FileNotFoundError(
@@ -99,40 +177,18 @@ def load_sheet(path: Path = DEFAULT_SHEET_PATH) -> CharacterSheet:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in '{path}': {exc}") from exc
 
-    race = data.get("race", "Human")
-    calling = data.get("calling") or (race if race != "Human" else None)
+    return cast(CharacterSheet, _schema.load(data))
 
-    return CharacterSheet(
-        id=data.get("id", ""),
-        name=data.get("name", "Unknown Adventurer"),
-        occupation=data.get("occupation", "Peasant"),
-        race=race,
-        calling=calling,
-        level=int(data.get("level", 0)),
-        abilities=data.get("abilities", {a: 10 for a in DCC_ABILITIES}),
-        hp=int(data.get("hp", 4)),
-        ac=int(data.get("ac", 10)),
-        equipment=[
-            Equipment(
-                name=e.get("name", "unknown"),
-                quantity=int(e.get("quantity", 1)),
-                weight=float(e.get("weight", 0.0)),
-                charges=int(e.get("charges", -1)),
-                source=e.get("source", "starting equipment"),
-            )
-            for e in data.get("equipment", [])
-        ],
-        conditions=[
-            Condition(
-                name=c.get("name", "unknown"),
-                rounds=int(c.get("rounds", -1)),
-                source=c.get("source", ""),
-                stat=c.get("stat", ""),
-                modifier=c.get("modifier", ""),
-            )
-            for c in data.get("conditions", [])
-        ],
-    )
+
+def save_sheet(sheet: CharacterSheet, path: Path = DEFAULT_SHEET_PATH) -> None:
+    """
+    Persist a CharacterSheet to a JSON file.
+
+    Raises:
+        OSError: If the file cannot be written.
+    """
+    data = _schema.dump(sheet)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def format_sheet(sheet: CharacterSheet) -> str:
