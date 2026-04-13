@@ -1,6 +1,10 @@
 {
+  "id": "char-001",
   "name": "Bram Ironfoot",
   "occupation": "Dwarven Miner",
+  "race": "Dwarf",
+  "calling": "Dwarf",
+  "level": 1,
   "abilities": {
     "Strength": 14,
     "Agility": 9,
@@ -12,10 +16,19 @@
   "hp": 6,
   "ac": 12,
   "equipment": [
-    "pickaxe",
-    "torch (x3)",
-    "rope (50 ft)",
-    "iron rations (3 days)",
-    "2 gp"
+    { "name": "Pickaxe",         "quantity": 1, "weight": 6.0, "charges": -1, "source": "starting equipment" },
+    { "name": "Torch",           "quantity": 3, "weight": 1.0, "charges": -1, "source": "starting equipment" },
+    { "name": "Rope (50 ft)",    "quantity": 1, "weight": 5.0, "charges": -1, "source": "starting equipment" },
+    { "name": "Iron rations",    "quantity": 3, "weight": 1.0, "charges": -1, "source": "starting equipment" },
+    { "name": "Gold pieces",     "quantity": 2, "weight": 0.0, "charges": -1, "source": "starting equipment" }
+  ],
+  "conditions": [
+    {
+      "name": "poisoned",
+      "rounds": 3,
+      "source": "Giant Spider bite",
+      "stat": "Stamina",
+      "modifier": "-2"
+    }
   ]
 }

@@ -27,10 +27,6 @@ from services.dice_service import (  # noqa: E402
     roll_ability_scores as _roll_ability_scores,
     roll_dice_chain as _roll_dice_chain,
 )
-from services.character_service import (  # noqa: E402
-    load_sheet as _load_sheet,
-    format_sheet as _fmt_sheet,
-)
 
 mcp = FastMCP("DCC Dice Roller")
 
@@ -150,23 +146,6 @@ def roll_dice_chain(starting_die: int, steps: int = 0) -> str:
         return _fmt_dice_chain(starting_die, steps)
     except ValueError as exc:
         return f"[Dice error] {exc}"
-
-
-@mcp.tool()
-def get_character_sheet() -> str:
-    """
-    Return the current player character sheet.
-
-    Reads character.json from the working directory. Use this whenever you
-    need to know a character's name, occupation, ability scores, HP, AC,
-    or equipment — for example before calling for a saving throw, resolving
-    combat, or describing what a character is carrying.
-    """
-    try:
-        sheet = _load_sheet()
-        return _fmt_sheet(sheet)
-    except (FileNotFoundError, ValueError) as exc:
-        return f"[Sheet error] {exc}"
 
 
 if __name__ == "__main__":

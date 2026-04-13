@@ -19,6 +19,7 @@ Prerequisites:
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -156,13 +157,14 @@ def build_assistant_message(message) -> dict:
 async def handle_tool_calls(
     response,
     messages: list[dict],
-    session: ClientSession,
+    tool_sessions: dict[str, ClientSession],
     model: str,
     ollama_tools: list[dict],
 ):
     """
     Consume all tool-call rounds until the model produces a plain text reply.
     Mutates *messages* in place and returns the final plain-text response.
+    tool_sessions maps tool name → the MCP ClientSession that owns it.
     """
     while response.message.tool_calls:
         messages.append(build_assistant_message(response.message))
@@ -172,11 +174,15 @@ async def handle_tool_calls(
             args: dict = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
 
             print_tool_call(tc.function.name, args)
-            result = await session.call_tool(tc.function.name, arguments=args)
-            text_parts = [
-                item.text for item in result.content if isinstance(item, TextContent)
-            ]
-            tool_text = "\n".join(text_parts) if text_parts else "(no result)"
+            session = tool_sessions.get(tc.function.name)
+            if session is None:
+                tool_text = f"[Error] Unknown tool: {tc.function.name}"
+            else:
+                result = await session.call_tool(tc.function.name, arguments=args)
+                text_parts = [
+                    item.text for item in result.content if isinstance(item, TextContent)
+                ]
+                tool_text = "\n".join(text_parts) if text_parts else "(no result)"
             print_tool_result(tool_text)
             messages.append({"role": "tool", "content": tool_text})
 
@@ -191,83 +197,98 @@ async def handle_tool_calls(
 # ---------------------------------------------------------------------------
 
 async def run(model: str) -> None:
-    server_script = os.path.join(
+    servers_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "servers", "dice_server.py",
+        "servers",
     )
-
-    server_params = StdioServerParameters(
-        command=sys.executable,  # always use the active venv Python
-        args=[server_script],
+    dice_params = StdioServerParameters(
+        command=sys.executable,
+        args=[os.path.join(servers_dir, "dice_server.py")],
+    )
+    char_params = StdioServerParameters(
+        command=sys.executable,
+        args=[os.path.join(servers_dir, "character_server.py")],
     )
 
     print_banner(model)
-    console.print("[dim]Connecting to DCC Dice Roller MCP server…[/dim]")
+    console.print("[dim]Connecting to MCP servers…[/dim]")
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
+    async with contextlib.AsyncExitStack() as stack:
+        r1, w1 = await stack.enter_async_context(stdio_client(dice_params))
+        dice_session = await stack.enter_async_context(ClientSession(r1, w1))
+        await dice_session.initialize()
 
-            tools_result = await session.list_tools()
-            ollama_tools = mcp_tools_to_ollama(tools_result.tools)
+        r2, w2 = await stack.enter_async_context(stdio_client(char_params))
+        char_session = await stack.enter_async_context(ClientSession(r2, w2))
+        await char_session.initialize()
 
-            tool_names = [t.name for t in tools_result.tools]
-            console.print(f"[dim]Tools available: {', '.join(tool_names)}[/dim]")
-            console.print(Rule(style="dark_red"))
+        # Merge tools from both servers; build name→session routing map
+        dice_tools = (await dice_session.list_tools()).tools
+        char_tools = (await char_session.list_tools()).tools
+        all_tools = dice_tools + char_tools
+        tool_sessions: dict[str, ClientSession] = {
+            **{t.name: dice_session for t in dice_tools},
+            **{t.name: char_session for t in char_tools},
+        }
+        ollama_tools = mcp_tools_to_ollama(all_tools)
 
-            messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        tool_names = list(tool_sessions.keys())
+        console.print(f"[dim]Tools available: {', '.join(tool_names)}[/dim]")
+        console.print(Rule(style="dark_red"))
 
-            # ---- Opening scene (no user input needed) ----
-            console.print("[dim]Summoning the Game Master…[/dim]\n")
-            messages.append({"role": "user", "content": "Begin the session."})
+        messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            try:
-                opening = ollama.chat(
-                    model=model,
-                    messages=messages,
-                    tools=ollama_tools,
-                )
-            except ollama.ResponseError as exc:
-                console.print(
-                    f"[bold red]Ollama error:[/bold red] {exc}\n"
-                    "Make sure Ollama is running ([cyan]ollama serve[/cyan]) "
-                    f"and the model is pulled ([cyan]ollama pull {model}[/cyan])."
-                )
-                return
+        # ---- Opening scene (no user input needed) ----
+        console.print("[dim]Summoning the Game Master…[/dim]\n")
+        messages.append({"role": "user", "content": "Begin the session."})
 
-            opening = await handle_tool_calls(
-                opening, messages, session, model, ollama_tools
+        try:
+            opening = ollama.chat(
+                model=model,
+                messages=messages,
+                tools=ollama_tools,
             )
-            print_gm(opening.message.content or "")
+        except ollama.ResponseError as exc:
+            console.print(
+                f"[bold red]Ollama error:[/bold red] {exc}\n"
+                "Make sure Ollama is running ([cyan]ollama serve[/cyan]) "
+                f"and the model is pulled ([cyan]ollama pull {model}[/cyan])."
+            )
+            return
+
+        opening = await handle_tool_calls(
+            opening, messages, tool_sessions, model, ollama_tools
+        )
+        print_gm(opening.message.content or "")
+        console.print()
+
+        # ---- Main chat loop ----
+        while True:
+            try:
+                user_input = Prompt.ask("[bold green]You[/bold green]").strip()
+            except (EOFError, KeyboardInterrupt):
+                console.print("\n[dim]Farewell, adventurer. May Luck smile upon you.[/dim]")
+                break
+
+            if not user_input:
+                continue
+            if user_input.lower() in ("quit", "exit", "q"):
+                console.print("[dim]Farewell, adventurer. May Luck smile upon you.[/dim]")
+                break
+
+            messages.append({"role": "user", "content": user_input})
             console.print()
 
-            # ---- Main chat loop ----
-            while True:
-                try:
-                    user_input = Prompt.ask("[bold green]You[/bold green]").strip()
-                except (EOFError, KeyboardInterrupt):
-                    console.print("\n[dim]Farewell, adventurer. May Luck smile upon you.[/dim]")
-                    break
-
-                if not user_input:
-                    continue
-                if user_input.lower() in ("quit", "exit", "q"):
-                    console.print("[dim]Farewell, adventurer. May Luck smile upon you.[/dim]")
-                    break
-
-                messages.append({"role": "user", "content": user_input})
-                console.print()
-
-                response = ollama.chat(
-                    model=model,
-                    messages=messages,
-                    tools=ollama_tools,
-                )
-                response = await handle_tool_calls(
-                    response, messages, session, model, ollama_tools
-                )
-                print_gm(response.message.content or "")
-                console.print()
+            response = ollama.chat(
+                model=model,
+                messages=messages,
+                tools=ollama_tools,
+            )
+            response = await handle_tool_calls(
+                response, messages, tool_sessions, model, ollama_tools
+            )
+            print_gm(response.message.content or "")
+            console.print()
 
 
 def main() -> None:
