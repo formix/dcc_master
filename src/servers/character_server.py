@@ -24,10 +24,8 @@ from services.character_service import (  # noqa: E402
     format_sheet as _fmt_sheet,
     Condition,
     Equipment,
-    DCC_RACES,
-    DCC_CLASSES,
 )
-from services.dice_service import DCC_ABILITIES  # noqa: E402
+from rulesets.dcc import CHARACTER_RACES, CHARACTER_CLASSES, CHARACTER_ABILITIES  # noqa: E402
 
 mcp = FastMCP("DCC Character Sheet")
 
@@ -102,13 +100,13 @@ def update_character_stats(
             sheet.occupation = occupation
             changes.append(f"occupation='{occupation}'")
         if race is not None:
-            if race not in DCC_RACES:
-                return f"[Sheet error] Invalid race '{race}'. Valid races: {', '.join(DCC_RACES)}"
+            if race not in CHARACTER_RACES:
+                return f"[Sheet error] Invalid race '{race}'. Valid races: {', '.join(CHARACTER_RACES)}"
             sheet.race = race
             changes.append(f"race='{race}'")
         if calling is not None:
-            if calling not in DCC_CLASSES:
-                return f"[Sheet error] Invalid calling '{calling}'. Valid callings: {', '.join(DCC_CLASSES)}"
+            if calling not in CHARACTER_CLASSES:
+                return f"[Sheet error] Invalid calling '{calling}'. Valid callings: {', '.join(CHARACTER_CLASSES)}"
             sheet.calling = calling
             changes.append(f"calling='{calling}'")
         if level is not None:
@@ -139,10 +137,10 @@ def update_ability_score(ability: str, score: int) -> str:
     Returns the updated score, or an error string.
     """
     try:
-        if ability not in DCC_ABILITIES:
+        if ability not in CHARACTER_ABILITIES:
             return (
                 f"[Sheet error] Unknown ability '{ability}'. "
-                f"Valid abilities: {', '.join(DCC_ABILITIES)}"
+                f"Valid abilities: {', '.join(CHARACTER_ABILITIES)}"
             )
         sheet = _load_sheet()
         old = sheet.abilities.get(ability, "—")
@@ -156,21 +154,18 @@ def update_ability_score(ability: str, score: int) -> str:
 @mcp.tool()
 def add_condition(
     name: str,
-    stat: str,
-    modifier: str,
     source: str = "",
     rounds: int = -1,
+    description: str = "",
 ) -> str:
     """
     Apply a temporary condition to the character.
 
     Parameters:
-        name:     Label for the condition (e.g., "poisoned", "blinded").
-        stat:     Which stat or roll is affected (e.g., "Strength", "attack", "all saves").
-        modifier: Effect value — flat uses +/− notation ("+2", "−1");
-                  dice-chain steps use the 'dc' suffix ("+1dc", "−1dc").
-        source:   What caused the condition (e.g., "Giant Spider bite").
-        rounds:   Duration in rounds. Use −1 for indefinite.
+        name:        Label for the condition (e.g., "poisoned", "blinded").
+        source:      What caused the condition (e.g., "Giant Spider bite").
+        rounds:      Duration in rounds. Use −1 for indefinite.
+        description: Free-form text describing the condition's effect.
 
     Returns confirmation, or an error string.
     """
@@ -180,13 +175,12 @@ def add_condition(
             name=name,
             rounds=rounds,
             source=source,
-            stat=stat,
-            modifier=modifier,
+            description=description,
         )
         sheet.conditions.append(condition)
         _save_sheet(sheet)
         duration = "indefinitely" if rounds == -1 else f"for {rounds} round(s)"
-        return f"Condition '{name}' applied {duration} ({stat} {modifier})."
+        return f"Condition '{name}' applied {duration}."
     except (FileNotFoundError, ValueError, OSError) as exc:
         return f"[Sheet error] {exc}"
 
@@ -229,7 +223,7 @@ def add_equipment(
         name:     Item name (e.g., "Torch", "Healing potion").
         quantity: Number of this item to add. Default 1.
         weight:   Weight in pounds. Default 0.0.
-        charges:  Uses/charges remaining; −1 means not applicable.
+        charges:  Uses/charges remaining; -1 means not applicable.
         source:   Where the item came from (e.g., "looted", "purchased").
 
     Returns confirmation, or an error string.

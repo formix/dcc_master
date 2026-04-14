@@ -23,12 +23,5 @@
     { "name": "Gold pieces",     "quantity": 2, "weight": 0.0, "charges": -1, "source": "starting equipment" }
   ],
   "conditions": [
-    {
-      "name": "poisoned",
-      "rounds": 3,
-      "source": "Giant Spider bite",
-      "stat": "Stamina",
-      "modifier": "-2"
-    }
   ]
 }

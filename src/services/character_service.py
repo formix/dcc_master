@@ -1,8 +1,8 @@
 """
 DCC Character Sheet — pure business logic.
 
-A minimal 0-level DCC character sheet. Ability score keys match DCC_ABILITIES
-from dice_service.py. Loads from / saves to a JSON file via marshmallow schemas;
+A minimal 0-level DCC character sheet. Ability score keys match CHARACTER_ABILITIES
+from rulesets/dcc.py. Loads from / saves to a JSON file via marshmallow schemas;
 no I/O framework dependency so it can be used by tests, CLIs, or any transport layer.
 """
 
@@ -13,17 +13,10 @@ from typing import cast
 
 from marshmallow import Schema, fields, post_load, pre_load, EXCLUDE
 
-from services.dice_service import DCC_ABILITIES
+from rulesets.dcc import CHARACTER_ABILITIES
 
 # JSON file in the working directory (project root when run normally).
-DEFAULT_SHEET_PATH = Path("character.json")
-
-# DCC playable races.
-DCC_RACES: list[str] = ["Human", "Elf", "Halfling", "Dwarf"]
-
-# All DCC classes. Humans choose from Warrior/Wizard/Cleric/Thief.
-# Non-human races (Elf, Halfling, Dwarf) use their race name as their class.
-DCC_CLASSES: list[str] = ["Warrior", "Wizard", "Cleric", "Thief", "Elf", "Halfling", "Dwarf"]
+DEFAULT_SHEET_PATH = Path("data/character.json")
 
 
 # ---------------------------------------------------------------------------
@@ -36,20 +29,15 @@ class Condition:
     A temporary status effect on a character.
 
     Attributes:
-        name:     Label for the condition (e.g., "poisoned", "blind").
-        rounds:   How many rounds remain. -1 means indefinite.
-        source:   What caused it (e.g., "Giant Spider bite").
-        stat:     Which stat / roll the modifier applies to
-                  (e.g., "Strength", "attack", "all saves").
-        modifier: The modifier value as a string.
-                  Flat bonuses/penalties use +/- notation (e.g., "+2", "-1").
-                  Dice-chain steps use the 'dc' suffix (e.g., "+1dc", "-1dc").
+        name:        Label for the condition (e.g., "poisoned", "blind").
+        rounds:      How many rounds remain. -1 means indefinite.
+        source:      What caused it (e.g., "Giant Spider bite").
+        description: Free-form text describing the condition's effect.
     """
     name: str
     rounds: int          # -1 = indefinite
     source: str
-    stat: str
-    modifier: str
+    description: str = ""
 
 
 @dataclass
@@ -78,11 +66,11 @@ class CharacterSheet:
     id: str = ""
     name: str = "Unknown Adventurer"
     occupation: str = "Peasant"
-    race: str = "Human"           # must be in DCC_RACES
+    race: str = "Human"           # must be in CHARACTER_RACES
     calling: str | None = None    # None = 0-level; non-humans use race as class
     level: int = 0
     abilities: dict[str, int] = field(
-        default_factory=lambda: {a: 10 for a in DCC_ABILITIES}
+        default_factory=lambda: {a: 10 for a in CHARACTER_ABILITIES}
     )
     hp: int = 4
     ac: int = 10
@@ -98,11 +86,10 @@ class ConditionSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
-    name     = fields.Str(load_default="unknown")
-    rounds   = fields.Int(load_default=-1)
-    source   = fields.Str(load_default="")
-    stat     = fields.Str(load_default="")
-    modifier = fields.Str(load_default="")
+    name        = fields.Str(load_default="unknown")
+    rounds      = fields.Int(load_default=-1)
+    source      = fields.Str(load_default="")
+    description = fields.Str(load_default="")
 
     @post_load
     def make(self, data, **kwargs) -> Condition:
@@ -151,7 +138,7 @@ class CharacterSheetSchema(Schema):
     @post_load
     def make(self, data, **kwargs) -> CharacterSheet:
         if data["abilities"] is None:
-            data["abilities"] = {a: 10 for a in DCC_ABILITIES}
+            data["abilities"] = {a: 10 for a in CHARACTER_ABILITIES}
         return CharacterSheet(**data)
 
 
@@ -207,7 +194,7 @@ def format_sheet(sheet: CharacterSheet) -> str:
         "",
         "Ability Scores:",
     ]
-    for ability in DCC_ABILITIES:
+    for ability in CHARACTER_ABILITIES:
         score = sheet.abilities.get(ability, "—")
         lines.append(f"  {ability:15s}: {score}")
     if sheet.equipment:
@@ -225,16 +212,13 @@ def format_sheet(sheet: CharacterSheet) -> str:
             lines.append(f"  - {e.name}{detail}")
             for c in e.conditions:
                 rounds_str = "indefinite" if c.rounds == -1 else f"{c.rounds} round(s)"
-                lines.append(
-                    f"      [{c.name}] {rounds_str} | {c.stat} {c.modifier}"
-                )
+                desc = f" | {c.description}" if c.description else ""
+                lines.append(f"      [{c.name}] {rounds_str}{desc}")
     if sheet.conditions:
         lines.append("")
         lines.append("Conditions:")
         for c in sheet.conditions:
             rounds_str = "indefinite" if c.rounds == -1 else f"{c.rounds} round(s)"
-            lines.append(
-                f"  [{c.name}] {rounds_str} | source: {c.source} "
-                f"| {c.stat} {c.modifier}"
-            )
+            desc = f" | {c.description}" if c.description else ""
+            lines.append(f"  [{c.name}] {rounds_str} | source: {c.source}{desc}")
     return "\n".join(lines)

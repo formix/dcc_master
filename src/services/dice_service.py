@@ -12,26 +12,7 @@ import random
 import re
 from dataclasses import dataclass
 
-# ---------------------------------------------------------------------------
-# DCC constants
-# ---------------------------------------------------------------------------
-
-# The full DCC dice chain, weakest → strongest
-DCC_DICE_CHAIN: list[int] = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 30, 100]
-
-# DCC ability names differ from standard D&D
-DCC_ABILITIES: list[str] = [
-    "Strength",
-    "Agility",      # DCC uses Agility, not Dexterity
-    "Stamina",      # DCC uses Stamina, not Constitution
-    "Personality",  # DCC uses Personality, not Wisdom
-    "Intelligence",
-    "Luck",         # Unique to DCC — used for Luck burns and checks
-]
-
-# ---------------------------------------------------------------------------
-# Result dataclasses
-# ---------------------------------------------------------------------------
+from rulesets.dcc import DICE_CHAIN, CHARACTER_ABILITIES
 
 
 @dataclass
@@ -135,7 +116,7 @@ def roll_dice(expression: str) -> DiceRollResult:
     )
 
 
-def roll_ability_scores(method: str = "3d6") -> dict[str, int]:
+def roll_ability_scores(method: str = "3d6", abilities: list[str] = CHARACTER_ABILITIES) -> dict[str, int]:
     """
     Roll a full set of ability scores for a Dungeon Crawl Classics character.
 
@@ -149,22 +130,20 @@ def roll_ability_scores(method: str = "3d6") -> dict[str, int]:
 
     Args:
         method: Generation method — '3d6' (default) or '4d6dl'.
+        abilities: List of ability names to generate scores for. Defaults to CHARACTER_ABILITIES.
 
     Raises:
         ValueError: If method is not '3d6' or '4d6dl'.
     """
     if method not in ("3d6", "4d6dl"):
         raise ValueError(f"Unknown method '{method}'. Choose '3d6' or '4d6dl'.")
-
     scores: dict[str, int] = {}
-
-    for ability in DCC_ABILITIES:
+    for ability in abilities:
         if method == "4d6dl":
             rolls = _roll_many(6, 4)
             scores[ability] = sum(sorted(rolls)[1:])  # drop lowest
         else:  # 3d6
             scores[ability] = sum(_roll_many(6, 3))
-
     return scores
 
 
@@ -191,17 +170,17 @@ def roll_dice_chain(starting_die: int, steps: int = 0) -> DiceChainResult:
     Raises:
         ValueError: If starting_die is not a valid die in the DCC chain.
     """
-    if starting_die not in DCC_DICE_CHAIN:
-        valid = ", ".join(f"d{d}" for d in DCC_DICE_CHAIN)
+    if starting_die not in DICE_CHAIN:
+        valid = ", ".join(f"d{d}" for d in DICE_CHAIN)
         raise ValueError(
             f"d{starting_die} is not a valid DCC die. Valid dice: {valid}"
         )
 
-    idx = DCC_DICE_CHAIN.index(starting_die)
+    idx = DICE_CHAIN.index(starting_die)
     new_idx = idx + steps
-    clamped = new_idx < 0 or new_idx >= len(DCC_DICE_CHAIN)
-    new_idx = max(0, min(len(DCC_DICE_CHAIN) - 1, new_idx))
-    actual_die = DCC_DICE_CHAIN[new_idx]
+    clamped = new_idx < 0 or new_idx >= len(DICE_CHAIN)
+    new_idx = max(0, min(len(DICE_CHAIN) - 1, new_idx))
+    actual_die = DICE_CHAIN[new_idx]
 
     return DiceChainResult(
         requested_die=starting_die,

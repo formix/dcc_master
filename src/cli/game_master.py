@@ -2,7 +2,7 @@
 DCC Game Master — Command-Line Interface
 
 An old-school Dungeon Crawl Classics game master powered by Ollama and the
-DCC Dice Roller MCP server. The GM uses real dice rolls (never invented ones)
+DCC Dice Roller and Character Sheet MCP servers. The GM uses real dice rolls (never invented ones)
 for all in-game events via the MCP tool calls.
 
 Usage:
@@ -65,6 +65,15 @@ DCC FLAVOR NOTES:
 - Magic is wild and dangerous: spellburn costs life force.
 - Mighty Deeds let warriors attempt spectacular stunts on a hit with a 3+ deed die.
 - Always set a vivid atmospheric scene before asking what the players do next.
+
+DCC ECONOMY:
+- The economy runs on copper and silver pieces. Gold is scarce and commands \
+  serious attention when it appears — a single gold piece is a peasant's weekly \
+  wage. Platinum exists only as ancient treasure, minted by forgotten empires; \
+  it is never found in circulation and appears only in limited quantities deep \
+  in ruins or hoards. Price everything accordingly: common goods cost coppers, \
+  quality items cost silvers, and gold changes hands only for exceptional gear \
+  or large transactions.
 
 Begin the session by setting a grim, evocative opening scene and asking \
 the players what they do.\
