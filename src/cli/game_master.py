@@ -23,7 +23,6 @@ import contextlib
 import json
 import os
 import random
-import re
 import sys
 
 import ollama
@@ -256,7 +255,7 @@ async def run(model: str) -> None:
         console.print(f"[dim]Tools available: {', '.join(tool_names)}[/dim]")
         console.print(Rule(style="dark_red"))
 
-        # Fetch the freshly generated (unnamed) party from the scene server.
+        # Fetch stubs (id, race, occupation) for each generated character.
         console.print("[dim]Rolling up the party…[/dim]")
         stubs_result = await scene_session.call_tool("get_party_stubs", arguments={})
         stubs_text = "\n".join(
@@ -264,85 +263,18 @@ async def run(model: str) -> None:
         )
         stubs: list[dict] = json.loads(stubs_text)
 
-        # Ask the LLM to generate thematic names for each character.
-        console.print("[dim]Generating character names…[/dim]")
-        stubs_desc = "\n".join(
-            f"- id={s['id']}  race={s['race']}  occupation={s['occupation']}"
-            for s in stubs
-        )
-        name_prompt = (
-            "You are a fantasy name generator for a Dungeon Crawl Classics game. "
-            "Given the characters below, reply with ONLY a JSON array of strings — one "
-            "short, culturally fitting first name per character, in the same order "
-            "they appear. Names must fit the character's race and occupation. "
-            "Reply with nothing else — no explanation, no markdown, just the JSON array.\n\n"
-            + stubs_desc
-        )
-        name_response = ollama.chat(
-            model=model,
-            messages=[{"role": "user", "content": name_prompt}],
-        )
-        raw = (name_response.message.content or "").strip()
-        # Extract the JSON array even if the model adds surrounding text.
-        match = re.search(r"\[.*?\]", raw, re.DOTALL)
-        if match:
-            try:
-                names: list[str] = json.loads(match.group())
-            except json.JSONDecodeError:
-                names = []
-        else:
-            names = []
-
-        # Rename each character via the scene server MCP tool.
-        for stub, name_str in zip(stubs, names):
-            await scene_session.call_tool(
-                "rename_party_member",
-                arguments={"character_id": stub["id"], "new_name": name_str.strip()},
-            )
-
-        # ---- Interactive identity step ----
-        # Re-fetch stubs so we have the LLM-generated names for display.
-        stubs_result = await scene_session.call_tool("get_party_stubs", arguments={})
-        stubs_text = "\n".join(
-            item.text for item in stubs_result.content if isinstance(item, TextContent)
-        )
-        stubs = json.loads(stubs_text)
-        # Also grab current party for names already assigned.
-        party_result = await scene_session.call_tool("list_party", arguments={})
-        named_party_text = "\n".join(
-            item.text for item in party_result.content if isinstance(item, TextContent)
-        )
-        # Parse the generated names from the listing (first word of each "  Name" line).
-        assigned_names: list[str] = []
-        for line in named_party_text.splitlines():
-            stripped = line.strip()
-            if stripped and not stripped.startswith(("Party", "Race", "HP", "Str", "Occ", "Equ", "Con", "Ab")):
-                # Top-level character line: "  Name"
-                if line.startswith("  ") and not line.startswith("    "):
-                    assigned_names.append(stripped)
-        # Pad in case parsing missed some.
-        while len(assigned_names) < len(stubs):
-            assigned_names.append(f"Character_{len(assigned_names)+1}")
-
         _GENDERS    = ["Male", "Female", "Non-binary"]
         _ALIGNMENTS = ["Chaotic", "Neutral", "Lawful"]
 
         console.print(Rule(style="dark_red"))
-        console.print("[bold]Customise your adventurers[/bold]  [dim](press Enter to keep the suggested value)[/dim]\n")
+        console.print("[bold]Customise your adventurers[/bold]  [dim](press Enter to use a random value)[/dim]\n")
 
-        for stub, suggested_name in zip(stubs, assigned_names):
+        for stub in stubs:
             console.print(
-                f"[bold cyan]{suggested_name}[/bold cyan]  "
-                f"[dim]{stub['race']} {stub['occupation']}[/dim]"
+                f"[bold cyan]{stub['race']} {stub['occupation']}[/bold cyan]"
             )
 
-            # Name
-            entered_name = Prompt.ask(
-                "  Name",
-                default=suggested_name,
-            ).strip() or suggested_name
-
-            # Gender
+            # 1. Gender
             gender_opts = " / ".join(f"[{i+1}] {g}" for i, g in enumerate(_GENDERS))
             entered_gender_raw = Prompt.ask(
                 f"  Gender  {gender_opts}",
@@ -355,7 +287,27 @@ async def run(model: str) -> None:
             else:
                 entered_gender = random.choice(_GENDERS)
 
-            # Alignment
+            # 2. Generate a name using race, occupation and gender.
+            console.print("  [dim]Generating name…[/dim]")
+            name_prompt = (
+                "You are a fantasy name generator for a Dungeon Crawl Classics game. "
+                f"Generate ONE short, culturally fitting first name for a {entered_gender} "
+                f"{stub['race']} {stub['occupation']}. "
+                "Reply with ONLY the name — no explanation, no punctuation, nothing else."
+            )
+            name_response = ollama.chat(
+                model=model,
+                messages=[{"role": "user", "content": name_prompt}],
+            )
+            suggested_name = (name_response.message.content or "").strip().split()[0]
+
+            # 3. Name — confirm or override.
+            entered_name = Prompt.ask(
+                "  Name",
+                default=suggested_name,
+            ).strip() or suggested_name
+
+            # 4. Alignment
             align_opts = " / ".join(f"[{i+1}] {a}" for i, a in enumerate(_ALIGNMENTS))
             entered_align_raw = Prompt.ask(
                 f"  Alignment  {align_opts}",
