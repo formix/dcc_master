@@ -74,7 +74,6 @@ def update_character_stats(
     race: str | None = None,
     calling: str | None = None,
     level: int | None = None,
-    ac: int | None = None,
 ) -> str:
     """
     Update basic character fields. Only the fields you supply are changed.
@@ -85,7 +84,6 @@ def update_character_stats(
         race:       Must be one of: Human, Elf, Halfling, Dwarf.
         calling:    Class / calling (e.g., "Warrior"). Pass null for 0-level.
         level:      Character level (0 for funnel).
-        ac:         Armour Class.
 
     Returns a summary of the changes, or an error string.
     """
@@ -112,9 +110,6 @@ def update_character_stats(
         if level is not None:
             sheet.level = level
             changes.append(f"level={level}")
-        if ac is not None:
-            sheet.ac = ac
-            changes.append(f"ac={ac}")
 
         if not changes:
             return "No changes supplied — character sheet unchanged."
@@ -156,7 +151,6 @@ def add_condition(
     name: str,
     source: str = "",
     rounds: int = -1,
-    description: str = "",
 ) -> str:
     """
     Apply a temporary condition to the character.
@@ -165,7 +159,6 @@ def add_condition(
         name:        Label for the condition (e.g., "poisoned", "blinded").
         source:      What caused the condition (e.g., "Giant Spider bite").
         rounds:      Duration in rounds. Use −1 for indefinite.
-        description: Free-form text describing the condition's effect.
 
     Returns confirmation, or an error string.
     """
@@ -175,7 +168,6 @@ def add_condition(
             name=name,
             rounds=rounds,
             source=source,
-            description=description,
         )
         sheet.conditions.append(condition)
         _save_sheet(sheet)

@@ -132,7 +132,6 @@ def add_party_member_condition(
     condition_name: str,
     source: str = "",
     rounds: int = -1,
-    description: str = "",
 ) -> str:
     """
     Apply a temporary condition to a party member.
@@ -142,14 +141,12 @@ def add_party_member_condition(
         condition_name: Label for the condition (e.g., "poisoned", "on fire").
         source:         What caused it (e.g., "Giant Spider bite").
         rounds:         Duration in rounds; -1 means indefinite.
-        description:    Free-form text describing the condition's effect.
     """
     try:
         condition = Condition(
             name=condition_name,
             rounds=rounds,
             source=source,
-            description=description,
         )
         ch = _scene.add_condition(name, condition)
         duration = "indefinitely" if rounds == -1 else f"for {rounds} round(s)"

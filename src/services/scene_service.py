@@ -10,6 +10,7 @@ import uuid
 
 from rulesets.dcc import CHARACTER_RACES, CHARACTER_OCCUPATIONS, CHARACTER_ABILITIES, ABILITY_MODIFIERS, ALIGNEMENTS, GENDERS
 from services.character_service import CharacterSheet, Equipment, Condition
+from services.dice_service import roll_dice
 
 # ---------------------------------------------------------------------------
 # Party state (in-memory singleton)
@@ -24,14 +25,6 @@ _scene: dict = {
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _roll_die(sides: int) -> int:
-    return random.randint(1, sides)
-
-
-def _roll_many(sides: int, count: int) -> list[int]:
-    return [_roll_die(sides) for _ in range(count)]
 
 
 def _random_race() -> str:
@@ -52,11 +45,11 @@ def _generate_character(name: str) -> CharacterSheet:
     calling = race if race != "Human" else None
 
     # Ability scores: 3d6 straight for each attribute.
-    abilities = {a: sum(_roll_many(6, 3)) for a in CHARACTER_ABILITIES}
+    abilities = {a: roll_dice("3d6").total for a in CHARACTER_ABILITIES}
 
     # 0-level HP: 1d4 + Stamina modifier (minimum 1).
     stamina_mod = ABILITY_MODIFIERS.get(abilities["Stamina"], 0)
-    hp = max(1, _roll_die(4) + stamina_mod)
+    hp = max(1, roll_dice("1d4").total + stamina_mod)
 
     # Starting equipment comes from the occupation table.
     equipment = [
@@ -75,7 +68,6 @@ def _generate_character(name: str) -> CharacterSheet:
         level=0,
         abilities=abilities,
         hp=hp,
-        ac=10,
         equipment=equipment,
         conditions=[],
     )
@@ -228,7 +220,7 @@ def format_party() -> str:
         lines.append(f"  {ch.name}{leader_tag}")
         lines.append(f"    Race: {ch.race}   Gender: {ch.gender}   Alignment: {ch.alignment}")
         lines.append(f"    Occupation: {ch.occupation}   Calling: {calling_str}")
-        lines.append(f"    HP: {ch.hp}   AC: {ch.ac}   Level: {ch.level}")
+        lines.append(f"    HP: {ch.hp}   AC: {ch.get_ac()}   Level: {ch.level}")
         ab_str = "  ".join(f"{k[:3]}: {v}" for k, v in ch.abilities.items())
         lines.append(f"    {ab_str}")
         if ch.equipment:
@@ -237,5 +229,7 @@ def format_party() -> str:
         if ch.conditions:
             conds = ", ".join(c.name for c in ch.conditions)
             lines.append(f"    Conditions: {conds}")
+        if ch.notes:
+            lines.append("    Notes: " + "\n           ".join(ch.notes))
         lines.append("")
     return "\n".join(lines)

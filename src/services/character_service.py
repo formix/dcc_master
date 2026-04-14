@@ -13,10 +13,7 @@ from typing import cast
 
 from marshmallow import Schema, fields, post_load, pre_load, EXCLUDE
 
-from rulesets.dcc import CHARACTER_ABILITIES
-
-# JSON file in the working directory (project root when run normally).
-DEFAULT_SHEET_PATH = Path("data/character.json")
+from rulesets.dcc import CHARACTER_ABILITIES, ABILITY_MODIFIERS
 
 
 # ---------------------------------------------------------------------------
@@ -32,12 +29,14 @@ class Condition:
         name:        Label for the condition (e.g., "poisoned", "blind").
         rounds:      How many rounds remain. -1 means indefinite.
         source:      What caused it (e.g., "Giant Spider bite").
-        description: Free-form text describing the condition's effect.
-    """
+        modifier:    Optional numeric modifier to apply while the condition is active (e.g., -2 to all rolls).
+        type:        Optional category for the condition (e.g., "poison", "curse", "buff") that can be used for filtering or special interactions.
+        """
     name: str
     rounds: int          # -1 = indefinite
     source: str
-    description: str = ""
+    modifier: int = 0
+    type: str = ""
 
 
 @dataclass
@@ -75,9 +74,28 @@ class CharacterSheet:
         default_factory=lambda: {a: 10 for a in CHARACTER_ABILITIES}
     )
     hp: int = 4
-    ac: int = 10
     equipment: list[Equipment] = field(default_factory=list)
     conditions: list[Condition] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    def get_ac(self) -> int:
+        """Compute AC = 10 + Agility modifier + sum of armor modifiers.
+
+        Armor modifiers are drawn from conditions of type 'armor' on both
+        equipped items and the character directly.
+        """
+        agility_mod = ABILITY_MODIFIERS.get(self.abilities.get("Agility", 10), 0)
+        armor_mod = sum(
+            c.modifier
+            for eq in self.equipment
+            for c in eq.conditions
+            if c.type == "armor"
+        ) + sum(
+            c.modifier
+            for c in self.conditions
+            if c.type == "armor"
+        )
+        return 10 + agility_mod + armor_mod
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +109,6 @@ class ConditionSchema(Schema):
     name        = fields.Str(load_default="unknown")
     rounds      = fields.Int(load_default=-1)
     source      = fields.Str(load_default="")
-    description = fields.Str(load_default="")
 
     @post_load
     def make(self, data, **kwargs) -> Condition:
@@ -128,9 +145,9 @@ class CharacterSheetSchema(Schema):
     level      = fields.Int(load_default=0)
     abilities  = fields.Dict(keys=fields.Str(), values=fields.Int(), load_default=None)
     hp         = fields.Int(load_default=4)
-    ac         = fields.Int(load_default=10)
     equipment  = fields.List(fields.Nested(EquipmentSchema), load_default=list)
     conditions = fields.List(fields.Nested(ConditionSchema), load_default=list)
+    notes      = fields.List(fields.Str(), load_default=list)
 
     @pre_load
     def derive_calling(self, data, **kwargs) -> dict:
@@ -153,7 +170,7 @@ _schema = CharacterSheetSchema()
 # Public API
 # ---------------------------------------------------------------------------
 
-def load_sheet(path: Path = DEFAULT_SHEET_PATH) -> CharacterSheet:
+def load_sheet(path: Path) -> CharacterSheet:
     """
     Load a CharacterSheet from a JSON file.
 
@@ -174,7 +191,7 @@ def load_sheet(path: Path = DEFAULT_SHEET_PATH) -> CharacterSheet:
     return cast(CharacterSheet, _schema.load(data))
 
 
-def save_sheet(sheet: CharacterSheet, path: Path = DEFAULT_SHEET_PATH) -> None:
+def save_sheet(sheet: CharacterSheet, path: Path) -> None:
     """
     Persist a CharacterSheet to a JSON file.
 
@@ -194,7 +211,7 @@ def format_sheet(sheet: CharacterSheet) -> str:
         f"Race:       {sheet.race}   Gender: {sheet.gender}   Alignment: {sheet.alignment}",
         f"Calling:    {class_str}  (Level {sheet.level})",
         f"Occupation: {sheet.occupation}",
-        f"HP: {sheet.hp}   AC: {sheet.ac}",
+        f"HP: {sheet.hp}   AC: {sheet.get_ac()}",
         "",
         "Ability Scores:",
     ]
@@ -216,13 +233,15 @@ def format_sheet(sheet: CharacterSheet) -> str:
             lines.append(f"  - {e.name}{detail}")
             for c in e.conditions:
                 rounds_str = "indefinite" if c.rounds == -1 else f"{c.rounds} round(s)"
-                desc = f" | {c.description}" if c.description else ""
-                lines.append(f"      [{c.name}] {rounds_str}{desc}")
+                lines.append(f"      [{c.name}] {rounds_str}")
     if sheet.conditions:
         lines.append("")
         lines.append("Conditions:")
         for c in sheet.conditions:
             rounds_str = "indefinite" if c.rounds == -1 else f"{c.rounds} round(s)"
-            desc = f" | {c.description}" if c.description else ""
-            lines.append(f"  [{c.name}] {rounds_str} | source: {c.source}{desc}")
+            lines.append(f"  [{c.name}] {rounds_str} | source: {c.source}")
+    if sheet.notes:
+        lines.append("")
+        lines.append("Notes:")
+        lines.append("  " + "\n  ".join(sheet.notes))
     return "\n".join(lines)
