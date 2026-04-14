@@ -25,6 +25,13 @@ import os
 import random
 import re
 import sys
+from collections.abc import Awaitable, Callable
+
+# Ensure src/ is on the path so sibling packages (rulesets, services, …) resolve
+# regardless of the working directory the script is launched from.
+_src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 import ollama
 from mcp import ClientSession
@@ -35,6 +42,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.rule import Rule
 from rich.text import Text
+from rulesets.dcc import GENDERS, ALIGNEMENTS
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -127,10 +135,13 @@ def print_banner(model: str) -> None:
 
 
 def _strip_asides(text: str) -> str:
-    """Remove parenthetical asides and bracketed meta-commentary from GM output."""
+    """Remove parenthetical asides, bracketed meta-commentary, and leaked tool-call JSON from GM output."""
     # Strip (...) and [...] spans that span a single line (model self-reminders)
     text = re.sub(r"\s*\([^)]{0,200}\)", "", text)
     text = re.sub(r"\s*\[[^\]]{0,200}\]", "", text)
+    # Strip JSON tool-call blobs the model sometimes emits as plain text,
+    # e.g. {"function": "get_party_member", "parameters": {...}}
+    text = re.sub(r"\{[^{}]*\"function\"[^{}]*\}", "", text, flags=re.DOTALL)
     # Collapse any resulting blank lines (more than one in a row)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -189,6 +200,85 @@ def build_assistant_message(message) -> dict:
             for tc in message.tool_calls
         ]
     return msg
+
+
+# ---------------------------------------------------------------------------
+# Local command dispatcher — bypass the LLM for well-known direct commands
+# ---------------------------------------------------------------------------
+
+# Each entry: (compiled_regex, async handler(match, tool_sessions) -> str | None)
+# Return None to signal "not handled" (shouldn't happen if regex matched).
+_CommandHandler = Callable[[re.Match, dict], Awaitable[str]]
+_LOCAL_COMMANDS: list[tuple[re.Pattern, _CommandHandler]] = []
+
+
+def _local_command(pattern: str):
+    """Decorator that registers a local command handler."""
+    def decorator(fn):
+        _LOCAL_COMMANDS.append((re.compile(pattern, re.IGNORECASE), fn))
+        return fn
+    return decorator
+
+
+@_local_command(r"^show\s+(\S+)\s+(?:inventory|equipment|sheet)$")
+async def _cmd_show_inventory(match: re.Match, tool_sessions: dict) -> str:
+    name = match.group(1)
+    session = tool_sessions.get("get_party_member")
+    if session is None:
+        return "[Error] Scene server not available."
+    result = await session.call_tool("get_party_member", arguments={"name": name})
+    from mcp.types import TextContent as _TC
+    return "\n".join(item.text for item in result.content if isinstance(item, _TC))
+
+
+@_local_command(r"^show\s+party$")
+async def _cmd_show_party(match: re.Match, tool_sessions: dict) -> str:
+    session = tool_sessions.get("list_party")
+    if session is None:
+        return "[Error] Scene server not available."
+    result = await session.call_tool("list_party", arguments={})
+    from mcp.types import TextContent as _TC
+    return "\n".join(item.text for item in result.content if isinstance(item, _TC))
+
+
+@_local_command(r"^equip\s+(\S+)\s+(.+?)\s+(?:in|to|into)\s+(\S+)$")
+async def _cmd_equip(match: re.Match, tool_sessions: dict) -> str:
+    char_name, item_name, slot = match.group(1), match.group(2), match.group(3)
+    session = tool_sessions.get("equip_party_member_item")
+    if session is None:
+        return "[Error] Scene server not available."
+    result = await session.call_tool(
+        "equip_party_member_item",
+        arguments={"name": char_name, "item_name": item_name, "slot": slot},
+    )
+    from mcp.types import TextContent as _TC
+    return "\n".join(item.text for item in result.content if isinstance(item, _TC))
+
+
+@_local_command(r"^unequip\s+(\S+)\s+(?:from\s+)?(\S+)$")
+async def _cmd_unequip(match: re.Match, tool_sessions: dict) -> str:
+    char_name, slot = match.group(1), match.group(2)
+    session = tool_sessions.get("unequip_party_member_item")
+    if session is None:
+        return "[Error] Scene server not available."
+    result = await session.call_tool(
+        "unequip_party_member_item",
+        arguments={"name": char_name, "slot": slot},
+    )
+    from mcp.types import TextContent as _TC
+    return "\n".join(item.text for item in result.content if isinstance(item, _TC))
+
+
+async def try_local_command(user_input: str, tool_sessions: dict) -> str | None:
+    """
+    Try to match *user_input* against registered local commands.
+    Returns the result string if handled, or None to fall through to the LLM.
+    """
+    for pattern, handler in _LOCAL_COMMANDS:
+        m = pattern.match(user_input.strip())
+        if m:
+            return await handler(m, tool_sessions)
+    return None
 
 
 async def handle_tool_calls(
@@ -281,11 +371,8 @@ async def run(model: str) -> None:
         )
         stubs: list[dict] = json.loads(stubs_text)
 
-        _GENDERS    = ["Male", "Female", "Non-binary"]
-        _ALIGNMENTS = ["Chaotic", "Neutral", "Lawful"]
-
         console.print(Rule(style="dark_red"))
-        console.print("[bold]Customise your adventurers[/bold]  [dim](press Enter to use a random value)[/dim]\n")
+        console.print("[bold]Customise your adventurers[/bold]  [dim](press Enter to accept the suggested value)[/dim]\n")
 
         for stub in stubs:
             console.print(
@@ -293,17 +380,18 @@ async def run(model: str) -> None:
             )
 
             # 1. Gender
-            gender_opts = " / ".join(f"[{i+1}] {g}" for i, g in enumerate(_GENDERS))
+            default_gender = random.choice(GENDERS)
+            gender_opts = " / ".join(f"[{i+1}] {g}" for i, g in enumerate(GENDERS))
             entered_gender_raw = Prompt.ask(
                 f"  Gender  {gender_opts}",
-                default="",
+                default=default_gender,
             ).strip()
-            if entered_gender_raw.isdigit() and 1 <= int(entered_gender_raw) <= len(_GENDERS):
-                entered_gender = _GENDERS[int(entered_gender_raw) - 1]
-            elif entered_gender_raw in _GENDERS:
+            if entered_gender_raw.isdigit() and 1 <= int(entered_gender_raw) <= len(GENDERS):
+                entered_gender = GENDERS[int(entered_gender_raw) - 1]
+            elif entered_gender_raw in GENDERS:
                 entered_gender = entered_gender_raw
             else:
-                entered_gender = random.choice(_GENDERS)
+                entered_gender = default_gender
 
             # 2. Generate a name using race, occupation and gender.
             console.print("  [dim]Generating name…[/dim]")
@@ -326,17 +414,18 @@ async def run(model: str) -> None:
             ).strip() or suggested_name
 
             # 4. Alignment
-            align_opts = " / ".join(f"[{i+1}] {a}" for i, a in enumerate(_ALIGNMENTS))
+            default_alignment = random.choice(ALIGNEMENTS)
+            align_opts = " / ".join(f"[{i+1}] {a}" for i, a in enumerate(ALIGNEMENTS))
             entered_align_raw = Prompt.ask(
                 f"  Alignment  {align_opts}",
-                default="",
+                default=default_alignment,
             ).strip()
-            if entered_align_raw.isdigit() and 1 <= int(entered_align_raw) <= len(_ALIGNMENTS):
-                entered_alignment = _ALIGNMENTS[int(entered_align_raw) - 1]
-            elif entered_align_raw in _ALIGNMENTS:
+            if entered_align_raw.isdigit() and 1 <= int(entered_align_raw) <= len(ALIGNEMENTS):
+                entered_alignment = ALIGNEMENTS[int(entered_align_raw) - 1]
+            elif entered_align_raw in ALIGNEMENTS:
                 entered_alignment = entered_align_raw
             else:
-                entered_alignment = random.choice(_ALIGNMENTS)
+                entered_alignment = default_alignment
 
             await scene_session.call_tool(
                 "set_party_member_identity",
@@ -410,6 +499,14 @@ async def run(model: str) -> None:
             if user_input.lower() in ("quit", "exit", "q"):
                 console.print("[dim]Farewell, adventurer. May Luck smile upon you.[/dim]")
                 break
+
+            # ---- Local command dispatch (no LLM round-trip) ----
+            local_result = await try_local_command(user_input, tool_sessions)
+            if local_result is not None:
+                console.print()
+                console.print(local_result, highlight=False)
+                console.print()
+                continue
 
             messages.append({"role": "user", "content": user_input})
             console.print()

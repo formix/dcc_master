@@ -13,16 +13,7 @@ from typing import cast
 
 from marshmallow import Schema, fields, post_load, pre_load, EXCLUDE
 
-from rulesets.dcc import CHARACTER_ABILITIES, ABILITY_MODIFIERS
-
-
-# Ordered slot names. ring_left / ring_right are the two ring slots.
-SLOTS: list[str] = [
-    "head", "shoulder", "back", "body",
-    "weapon", "shield",
-    "ring_left", "ring_right",
-    "neck", "feet", "hands"
-]
+from rulesets.dcc import CHARACTER_ABILITIES, ABILITY_MODIFIERS, SLOTS
 
 
 # ---------------------------------------------------------------------------
@@ -61,12 +52,14 @@ class Equipment:
         source:     Where the item came from (e.g., "starting equipment", "looted").
         conditions: Conditions this item grants while equipped/active.
         tags:       Category tags for the item (e.g., ["armor"], ["weapon"]) used for filtering or special interactions.
+        modifier:   Numeric bonus/penalty this item contributes (e.g., +2 AC for a shield).
     """
     name: str
     quantity: int = 1
     weight: float = 0.0
     charges: int = -1          # -1 = not applicable
     source: str = "starting equipment"
+    modifier: int = 0
     conditions: list["Condition"] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 
@@ -95,21 +88,15 @@ class CharacterSheet:
     def get_ac(self) -> int:
         """Compute AC = 10 + Agility modifier + sum of armor modifiers.
 
-        Armor modifiers are drawn from conditions tagged 'armor' on both
-        equipped items and the character directly.
+        Armor bonus comes from:
+        - Items worn in slots that carry the 'armor' tag on the item itself.
+        - Conditions tagged 'armor' applied directly to the character.
         """
         agility_mod = ABILITY_MODIFIERS.get(self.abilities.get("Agility", 10), 0)
         armor_mod = sum(
-            c.modifier
-            for eq in self.equipment
-            for c in eq.conditions
-            if "armor" in c.tags
-        ) + sum(
-            c.modifier
+            eq.modifier
             for eq in self.slots.values()
-            if eq is not None
-            for c in eq.conditions
-            if "armor" in c.tags
+            if eq is not None and "armor" in eq.tags
         ) + sum(
             c.modifier
             for c in self.conditions
@@ -138,10 +125,17 @@ class CharacterSheet:
         if slot not in SLOTS:
             raise ValueError(f"Unknown slot '{slot}'. Valid slots: {', '.join(SLOTS)}")
 
-        # Find the item in the unequipped list.
-        item = next((e for e in self.equipment if e.name.lower() == item_name.lower()), None)
+        # Find the item in the unequipped list — exact match first, then substring.
+        needle = item_name.lower()
+        item = next((e for e in self.equipment if e.name.lower() == needle), None)
         if item is None:
-            raise KeyError(f"'{item_name}' not found in equipment list.")
+            item = next((e for e in self.equipment if needle in e.name.lower()), None)
+        if item is None:
+            available = ", ".join(f"'{e.name}'" for e in self.equipment) or "none"
+            raise KeyError(
+                f"No item matching '{item_name}' in equipment list. "
+                f"Available: {available}."
+            )
 
         if "wearable" not in item.tags:
             raise ValueError(f"'{item.name}' is not wearable (missing 'wearable' tag).")
@@ -215,6 +209,7 @@ class EquipmentSchema(Schema):
     weight     = fields.Float(load_default=0.0)
     charges    = fields.Int(load_default=-1)
     source     = fields.Str(load_default="starting equipment")
+    modifier   = fields.Int(load_default=0)
     conditions = fields.List(fields.Nested(lambda: ConditionSchema()), load_default=list)
 
     @post_load
@@ -340,12 +335,10 @@ def format_sheet(sheet: CharacterSheet) -> str:
         for c in sheet.conditions:
             rounds_str = "indefinite" if c.rounds == -1 else f"{c.rounds} round(s)"
             lines.append(f"  [{c.name}] {rounds_str} | source: {c.source}")
-    worn = {s: e for s, e in sheet.slots.items() if e is not None}
-    if worn:
-        lines.append("")
-        lines.append("Worn:")
-        for slot, e in worn.items():
-            lines.append(f"  {slot:12s}: {e.name}")
+    lines.append("")
+    lines.append("Slots:")
+    for slot, e in sheet.slots.items():
+        lines.append(f"  {slot:12s}: {e.name if e is not None else '—'}")
     if sheet.notes:
         lines.append("")
         lines.append("Notes:")

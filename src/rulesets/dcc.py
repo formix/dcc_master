@@ -108,6 +108,15 @@ ALIGNEMENTS: list[str] = ["Chaotic", "Neutral", "Lawful"]
 
 GENDERS: list[str] = ["Male", "Female"]
 
+# Equipment slots. ring_left / ring_right are the two ring slots.
+# Items tagged 'two-handed' require both 'weapon' and 'shield' to be empty.
+SLOTS: list[str] = [
+    "head", "shoulder", "back", "body",
+    "weapon", "shield",
+    "ring_left", "ring_right",
+    "neck", "feet", "belt",
+]
+
 # The full DCC dice chain, weakest → strongest.
 DICE_CHAIN: list[int] = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 30, 100]
 
