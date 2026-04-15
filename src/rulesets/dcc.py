@@ -5,8 +5,8 @@ Central place for all Dungeon Crawl Classics rule data:
 races, classes, the dice chain, and ability score names.
 """
 
-from models import Equipment
-from models.condition import Condition
+from models import Equipment, Condition
+
 
 # DCC playable races.
 CHARACTER_RACES: dict[str, float] = {"Human": 0.7, "Elf": 0.1, "Halfling": 0.1, "Dwarf": 0.1}
