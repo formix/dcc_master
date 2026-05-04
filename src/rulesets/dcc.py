@@ -151,6 +151,15 @@ WEAPONS: list[Equipment] = [
 ]
 
 
+# cost_cp is per single item. note indicates the standard bundle size sold by merchants.
+AMMUNITIONS: list[Equipment] = [
+    Equipment(name="Arrow",                cost_cp=25,  tags={"ammunition", "piercing"}, note="Sold in bundles of 20"),
+    Equipment(name="Arrow, silver-tipped", cost_cp=500, tags={"ammunition", "piercing", "silver"}),
+    Equipment(name="Quarrel",              cost_cp=33,  tags={"ammunition", "piercing"}, note="Sold in bundles of 30"),
+    Equipment(name="Sling stone",          cost_cp=3,   tags={"ammunition", "blunt"},    note="Sold in bundles of 30"),
+]
+
+
 # Armors and shields sourced from CHARACTER_OCCUPATIONS trade goods.
 # Each item has the "wearable" tag, a slot location tag, and an AC condition
 # with modifier equal to the item's AC bonus above unarmored (10).
