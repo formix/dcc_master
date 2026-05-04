@@ -13,7 +13,7 @@ CHARACTER_RACES: dict[str, float] = {"Human": 0.7, "Elf": 0.1, "Halfling": 0.1, 
 # Each race maps to a list of (occupation, trained_weapon, trade_good) tuples.
 CHARACTER_OCCUPATIONS: dict[str, list[tuple[str, str, str]]] = {
     "Human": [
-        ("Alchemist",            "Staff",       "Oil, 1 flask"),
+        ("Alchemist",            "Staff",       "Flask of oil"),
         ("Animal trainer",       "Club",        "Pony"),
         ("Armorer",              "Hammer",      "Iron helmet"),
         ("Astrologer",           "Dagger",      "Spyglass"),
@@ -37,7 +37,7 @@ CHARACTER_OCCUPATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("Gongfarmer",           "Trowel",      "Sack of night soil"),
         ("Grave digger",         "Shovel",      "Trowel"),
         ("Guild beggar",         "Sling",       "Crutches"),
-        ("Healer",               "Club",        "Holy water, 1 vial"),
+        ("Healer",               "Club",        "Vial of holy water"),
         ("Herbalist",            "Club",        "Herbs, 1 lb."),
         ("Herder",               "Staff",       "Herding dog"),
         ("Hunter",               "Shortbow",    "Deer pelt"),
@@ -104,31 +104,45 @@ CHARACTER_OCCUPATIONS: dict[str, list[tuple[str, str, str]]] = {
 
 # Weapon stats. Peasant-tool entries use the damage and cost of the like weapon.
 # cost_cp is in copper pieces: 1 gp = 100 cp, 1 sp = 10 cp.
+# ranges = [close, medium, long] in feet; empty list = melee only.
+# backstab_damage = alternate damage dice used on a backstab attack.
 WEAPONS: list[Equipment] = [
     # ── Core weapons ─────────────────────────────────────────────────────────
-    Equipment(name="Club",        cost_cp=3,     damage="1d4",  tags={"melee", "throwable", "blunt"}),
-    Equipment(name="Dagger",      cost_cp=300,   damage="1d4",  tags={"melee", "throwable", "piercing"}),
-    Equipment(name="Dart",        cost_cp=5,     damage="1d4",  tags={"throwable", "piercing"}),
-    Equipment(name="Handaxe",     cost_cp=400,   damage="1d6",  tags={"melee", "throwable", "slashing"}),
-    Equipment(name="Longsword",   cost_cp=1000,  damage="1d8",  tags={"melee", "slashing"}),
-    Equipment(name="Mace",        cost_cp=500,   damage="1d6",  tags={"melee", "blunt"}),
-    Equipment(name="Short sword", cost_cp=700,   damage="1d6",  tags={"melee", "piercing", "slashing"}),
-    Equipment(name="Shortbow",    cost_cp=2500,  damage="1d6",  tags={"two-handed", "piercing"}),
-    Equipment(name="Sling",       cost_cp=200,   damage="1d4",  tags={"blunt"}),
-    Equipment(name="Spear",       cost_cp=300,   damage="1d8",  tags={"melee", "throwable", "piercing"}),
-    Equipment(name="Staff",       cost_cp=50,    damage="1d4",  tags={"melee", "two-handed", "blunt"}),
+    Equipment(name="Battleaxe",        cost_cp=700,   damage="1d10", tags={"melee", "slashing"}),
+    Equipment(name="Blackjack",        cost_cp=300,   damage="1d3",  tags={"melee", "blunt"},               backstab="2d6"),
+    Equipment(name="Blowgun",          cost_cp=600,   damage="1d3",  tags={"ranged", "piercing"},            ranges=[20, 40, 60],    backstab="1d5"),
+    Equipment(name="Club",             cost_cp=300,   damage="1d4",  tags={"melee", "blunt"}),
+    Equipment(name="Crossbow",         cost_cp=3000,  damage="1d6",  tags={"ranged", "piercing"},            ranges=[80, 160, 240]),
+    Equipment(name="Dagger",           cost_cp=300,   damage="1d4",  tags={"melee", "ranged", "piercing"},   ranges=[10, 20, 30],    backstab="1d10"),
+    Equipment(name="Dart",             cost_cp=50,    damage="1d4",  tags={"ranged", "piercing"},            ranges=[20, 40, 60]),
+    Equipment(name="Flail",            cost_cp=600,   damage="1d6",  tags={"melee", "blunt"}),
+    Equipment(name="Garrote",          cost_cp=200,   damage="1",    tags={"melee", "blunt"},                backstab="3d4"),
+    Equipment(name="Handaxe",          cost_cp=400,   damage="1d6",  tags={"melee", "ranged", "slashing"},   ranges=[10, 20, 30]),
+    Equipment(name="Javelin",          cost_cp=100,   damage="1d6",  tags={"melee", "ranged", "piercing"},   ranges=[30, 60, 90]),
+    Equipment(name="Lance",            cost_cp=2500,  damage="1d12", tags={"melee", "piercing"}),
+    Equipment(name="Longbow",          cost_cp=4000,  damage="1d6",  tags={"ranged", "piercing"},            ranges=[70, 140, 210]),
+    Equipment(name="Longsword",        cost_cp=1000,  damage="1d8",  tags={"melee", "slashing"}),
+    Equipment(name="Mace",             cost_cp=500,   damage="1d6",  tags={"melee", "blunt"}),
+    Equipment(name="Polearm",          cost_cp=700,   damage="1d10", tags={"melee", "piercing", "reach"}),
+    Equipment(name="Shortbow",         cost_cp=2500,  damage="1d6",  tags={"ranged", "piercing"},            ranges=[50, 100, 150]),
+    Equipment(name="Short sword",      cost_cp=700,   damage="1d6",  tags={"melee", "piercing", "slashing"}),
+    Equipment(name="Sling",            cost_cp=200,   damage="1d4",  tags={"ranged", "blunt"},               ranges=[40, 80, 160]),
+    Equipment(name="Spear",            cost_cp=300,   damage="1d8",  tags={"melee", "piercing"}),
+    Equipment(name="Staff",            cost_cp=50,    damage="1d4",  tags={"melee", "two-handed", "blunt"}),
+    Equipment(name="Two-handed sword", cost_cp=1500,  damage="1d10", tags={"melee", "slashing"}),
+    Equipment(name="Warhammer",        cost_cp=500,   damage="1d8",  tags={"melee", "blunt"}),
     # ── Peasant tools (damage and cost of like weapon) ────────────────────────
     Equipment(name="Awl",       cost_cp=30,  damage="1d4",  tags={"melee", "piercing"}),
     Equipment(name="Chisel",    cost_cp=30,  damage="1d4",  tags={"melee", "piercing"}),
     Equipment(name="Cleaver",   cost_cp=150, damage="1d6",  tags={"melee", "slashing"}),
-    Equipment(name="Crowbar",   cost_cp=30,  damage="1d4",  tags={"melee", "throwable", "blunt"}),
+    Equipment(name="Crowbar",   cost_cp=30,  damage="1d4",  tags={"melee", "ranged", "blunt"}),
     Equipment(name="Cudgel",    cost_cp=50,  damage="1d4",  tags={"melee", "blunt"}),
-    Equipment(name="Hammer",    cost_cp=3,   damage="1d4",  tags={"melee", "throwable", "blunt"}),
-    Equipment(name="Knife",     cost_cp=200, damage="1d4",  tags={"melee", "throwable", "piercing"}),
+    Equipment(name="Hammer",    cost_cp=3,   damage="1d4",  tags={"melee", "ranged", "blunt"}),
+    Equipment(name="Knife",     cost_cp=200, damage="1d4",  tags={"melee", "ranged", "piercing"}),
     Equipment(name="Pick",      cost_cp=3,   damage="1d4",  tags={"melee", "two-handed", "piercing"}),
     Equipment(name="Pitchfork", cost_cp=50,  damage="1d8",  tags={"melee", "two-handed", "piercing"}),
     Equipment(name="Pole",      cost_cp=5,   damage="1d4",  tags={"melee", "two-handed", "blunt", "reach"}),
-    Equipment(name="Quill",     cost_cp=1,   damage="1d4",  tags={"throwable", "piercing"}),
+    Equipment(name="Quill",     cost_cp=1,   damage="1d4",  tags={"ranged", "piercing"}),
     Equipment(name="Razor",     cost_cp=75,  damage="1d4",  tags={"melee", "slashing"}),
     Equipment(name="Scissors",  cost_cp=500, damage="1d4",  tags={"melee", "piercing"}),
     Equipment(name="Shovel",    cost_cp=35,  damage="1d4",  tags={"melee", "two-handed", "blunt"}),
@@ -180,9 +194,9 @@ ARMORS: list[Equipment] = [
 # cost_cp is in copper pieces: 1 gp = 100 cp, 1 sp = 10 cp.
 TOOLS: list[Equipment] = [
     # ── Alchemical & religious ────────────────────────────────────────────────
-    Equipment(name="Oil, 1 flask",            cost_cp=3),    # lamp oil, DCC p.73
+    Equipment(name="Flask of oil",            cost_cp=3),    # lamp oil, DCC p.73
     Equipment(name="Holy symbol",             cost_cp=25),
-    Equipment(name="Holy water, 1 vial",      cost_cp=25),
+    Equipment(name="Vial of holy water",      cost_cp=25),
     # ── Food & consumables ────────────────────────────────────────────────────
     Equipment(name="Jar of honey",            cost_cp=10),
     Equipment(name="Side of beef",            cost_cp=100),
