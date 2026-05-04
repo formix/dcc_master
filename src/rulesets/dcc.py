@@ -161,26 +161,111 @@ AMMUNITIONS: list[Equipment] = [
 
 
 # Armors and shields sourced from CHARACTER_OCCUPATIONS trade goods.
-# Each item has the "wearable" tag, a slot location tag, and an AC condition
-# with modifier equal to the item's AC bonus above unarmored (10).
+# Each item has the "wearable" tag, a slot location tag, an AC condition,
+# and optionally check_penalty and speed conditions.
+# cost_cp is in copper pieces: 1 gp = 100 cp.
 ARMORS: list[Equipment] = [
+    Equipment(
+        name="Padded",
+        cost_cp=500,
+        fumble="d8",
+        tags={"wearable", "body"},
+        conditions=[Condition(name="ac", rounds=-1, target="ac", modifier=1)],
+    ),
     Equipment(
         name="Leather armor",
         cost_cp=2000,
+        fumble="d8",
         tags={"wearable", "body"},
-        conditions=[Condition(name="armor", rounds=-1, target="ac", modifier=2)],
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=2),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-1),
+        ],
+    ),
+    Equipment(
+        name="Studded leather",
+        cost_cp=4500,
+        fumble="d8",
+        tags={"wearable", "body"},
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=3),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-2),
+        ],
     ),
     Equipment(
         name="Hide armor",
-        cost_cp=1500,
+        cost_cp=3000,
+        fumble="d12",
         tags={"wearable", "body"},
-        conditions=[Condition(name="armor", rounds=-1, target="ac", modifier=4)],
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=3),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-3),
+        ],
+    ),
+    Equipment(
+        name="Scale mail",
+        cost_cp=8000,
+        fumble="d12",
+        tags={"wearable", "body"},
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=4),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-4),
+            Condition(name="speed",         rounds=-1, target="speed",         modifier=-5),
+        ],
+    ),
+    Equipment(
+        name="Chainmail",
+        cost_cp=15000,
+        fumble="d12",
+        tags={"wearable", "body"},
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=5),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-5),
+            Condition(name="speed",         rounds=-1, target="speed",         modifier=-5),
+        ],
+    ),
+    Equipment(
+        name="Banded mail",
+        cost_cp=25000,
+        fumble="d16",
+        tags={"wearable", "body"},
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=6),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-6),
+            Condition(name="speed",         rounds=-1, target="speed",         modifier=-5),
+        ],
+    ),
+    Equipment(
+        name="Half-plate",
+        cost_cp=55000,
+        fumble="d16",
+        tags={"wearable", "body"},
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=7),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-7),
+            Condition(name="speed",         rounds=-1, target="speed",         modifier=-10),
+        ],
+    ),
+    Equipment(
+        name="Full plate",
+        cost_cp=120000,
+        fumble="d16",
+        tags={"wearable", "body"},
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=8),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-8),
+            Condition(name="speed",         rounds=-1, target="speed",         modifier=-10),
+        ],
     ),
     Equipment(
         name="Shield",
         cost_cp=1000,
+        fumble="d8",
         tags={"wearable", "shield"},
-        conditions=[Condition(name="shield", rounds=-1, target="ac", modifier=1)],
+        conditions=[
+            Condition(name="ac",            rounds=-1, target="ac",            modifier=1),
+            Condition(name="check_penalty", rounds=-1, target="check_penalty", modifier=-1),
+        ],
     ),
     Equipment(
         name="Iron helmet",
