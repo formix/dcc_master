@@ -513,6 +513,8 @@ CHARACTER_ABILITIES: list[str] = [
 ]
 
 ABILITY_MODIFIERS: dict[int, int] = {
+    1: -4,
+    2: -3,
     3: -3,
     4: -2,
     5: -2,
@@ -533,7 +535,7 @@ ABILITY_MODIFIERS: dict[int, int] = {
     20: +4,
     21: +4,
     22: +5,
-    23: +6,
-    24: +7,
-    25: +8,
+    23: +5,
+    24: +6,
+    25: +7,
 }
